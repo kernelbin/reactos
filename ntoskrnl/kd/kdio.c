@@ -507,61 +507,79 @@ KdpScreenInit(PKD_DISPATCH_TABLE DispatchTable,
 BOOLEAN
 NTAPI
 KdpPrintString(
-    _In_ PSTRING Output)
-{
-    PLIST_ENTRY CurrentEntry;
-    PKD_DISPATCH_TABLE CurrentTable;
-
-    if (!KdpDebugMode.Value) return FALSE;
-
-    /* Call the registered handlers */
-    CurrentEntry = KdProviders.Flink;
-    while (CurrentEntry != &KdProviders)
-    {
-        /* Get the current table */
-        CurrentTable = CONTAINING_RECORD(CurrentEntry,
-                                         KD_DISPATCH_TABLE,
-                                         KdProvidersList);
-
-        /* Call it */
-        CurrentTable->KdpPrintRoutine(Output->Buffer, Output->Length);
-
-        /* Next Table */
-        CurrentEntry = CurrentEntry->Flink;
-    }
-
-    /* Call the Wrapper Routine */
-    if (WrapperTable.KdpPrintRoutine)
-        WrapperTable.KdpPrintRoutine(Output->Buffer, Output->Length);
-
-    return FALSE;
-}
+    _In_ PSTRING Output);
 
 extern STRING KdbPromptString;
 
-BOOLEAN
+VOID
 NTAPI
-KdpPromptString(
-    _In_ PSTRING PromptString,
-    _In_ PSTRING ResponseString)
+KdSendPacket(
+    IN ULONG PacketType,
+    IN PSTRING MessageHeader,
+    IN PSTRING MessageData,
+    IN OUT PKD_CONTEXT Context)
+{
+    if (PacketType == PACKET_TYPE_KD_DEBUG_IO)
+    {
+        PSTRING Output = MessageData;
+        PLIST_ENTRY CurrentEntry;
+        PKD_DISPATCH_TABLE CurrentTable;
+
+        if (!KdpDebugMode.Value) return;
+
+        /* Call the registered handlers */
+        CurrentEntry = KdProviders.Flink;
+        while (CurrentEntry != &KdProviders)
+        {
+            /* Get the current table */
+            CurrentTable = CONTAINING_RECORD(CurrentEntry,
+                                             KD_DISPATCH_TABLE,
+                                             KdProvidersList);
+
+            /* Call it */
+            CurrentTable->KdpPrintRoutine(Output->Buffer, Output->Length);
+
+            /* Next Table */
+            CurrentEntry = CurrentEntry->Flink;
+        }
+
+        /* Call the Wrapper Routine */
+        if (WrapperTable.KdpPrintRoutine)
+            WrapperTable.KdpPrintRoutine(Output->Buffer, Output->Length);
+
+        return;
+    }
+    UNIMPLEMENTED;
+}
+
+KDSTATUS
+NTAPI
+KdReceivePacket(
+    IN ULONG PacketType,
+    OUT PSTRING MessageHeader,
+    OUT PSTRING MessageData,
+    OUT PULONG DataLength,
+    IN OUT PKD_CONTEXT Context)
 {
     KIRQL OldIrql;
     STRING StringChar;
     CHAR Response;
     USHORT i;
     ULONG DummyScanCode;
+    PSTRING ResponseString = MessageData;
+
+    if (PacketType != PACKET_TYPE_KD_DEBUG_IO)
+      return KdPacketTimedOut;
 
     StringChar.Buffer = &Response;
     StringChar.Length = StringChar.MaximumLength = sizeof(Response);
 
     /* Display the string and print a new line for log neatness */
-    KdpPrintString(PromptString);
     *StringChar.Buffer = '\n';
     KdpPrintString(&StringChar);
 
     /* Print the kdb prompt */
     KdpPrintString(&KdbPromptString);
-
     // TODO: Use an improved KdbpReadCommand() function for our purposes.
 
     /* Acquire the printing spinlock without waiting at raised IRQL */
@@ -628,7 +646,7 @@ KdpPromptString(
     }
 
     /* Return the length */
-    ResponseString->Length = i;
+    *DataLength = i;
 
     if (!(KdbDebugState & KD_DEBUG_KDSERIAL))
         KbdEnableMouse();
@@ -640,33 +658,7 @@ KdpPromptString(
     *StringChar.Buffer = '\n';
     KdpPrintString(&StringChar);
 
-    /* Success; we don't need to resend */
-    return FALSE;
-}
-
-VOID
-NTAPI
-KdSendPacket(
-    IN ULONG PacketType,
-    IN PSTRING MessageHeader,
-    IN PSTRING MessageData,
-    IN OUT PKD_CONTEXT Context)
-{
-    UNIMPLEMENTED;
-    return;
-}
-
-KDSTATUS
-NTAPI
-KdReceivePacket(
-    IN ULONG PacketType,
-    OUT PSTRING MessageHeader,
-    OUT PSTRING MessageData,
-    OUT PULONG DataLength,
-    IN OUT PKD_CONTEXT Context)
-{
-    UNIMPLEMENTED;
-    return 0;
+    return KdPacketReceived;
 }
 
 /* EOF */
