@@ -66,9 +66,6 @@ KdpPromptString(
     DBGKD_DEBUG_IO DebugIo;
     ULONG Length;
     KDSTATUS Status;
-#ifndef _WINKD_
-    CHAR KdpMessageBuffer[0x1000];
-#endif
 
     /* Copy the string to the message buffer */
     KdpMoveMemory(KdpMessageBuffer,

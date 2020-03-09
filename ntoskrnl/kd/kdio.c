@@ -566,11 +566,15 @@ KdReceivePacket(
     CHAR Response;
     USHORT i;
     ULONG DummyScanCode;
-    PSTRING ResponseString = MessageData;
+    CHAR MessageBuffer[100];
+    STRING ResponseString;
 
     if (PacketType != PACKET_TYPE_KD_DEBUG_IO)
       return KdPacketTimedOut;
 
+    ResponseString.Buffer = MessageBuffer;
+    ResponseString.Length = 0;
+    ResponseString.MaximumLength = min(sizeof(MessageBuffer), MessageData->MaximumLength);
     StringChar.Buffer = &Response;
     StringChar.Length = StringChar.MaximumLength = sizeof(Response);
 
@@ -589,7 +593,7 @@ KdReceivePacket(
         KbdDisableMouse();
 
     /* Loop the whole string */
-    for (i = 0; i < ResponseString->MaximumLength; i++)
+    for (i = 0; i < ResponseString.MaximumLength; i++)
     {
         /* Check if this is serial debugging mode */
         if (KdbDebugState & KD_DEBUG_KDSERIAL)
@@ -634,18 +638,23 @@ KdReceivePacket(
              * Null terminate the output string -- documentation states that
              * DbgPrompt does not null terminate, but it does
              */
-            *(PCHAR)(ResponseString->Buffer + i) = 0;
+            *(PCHAR)(ResponseString.Buffer + i) = 0;
             break;
         }
 
         /* Write it back and print it to the log */
-        *(PCHAR)(ResponseString->Buffer + i) = Response;
+        *(PCHAR)(ResponseString.Buffer + i) = Response;
         KdpReleaseLock(&KdpSerialSpinLock, OldIrql);
         KdpPrintString(&StringChar);
         OldIrql = KdpAcquireLock(&KdpSerialSpinLock);
     }
 
+    /* Print a new line */
+    *StringChar.Buffer = '\n';
+    KdpPrintString(&StringChar);
+
     /* Return the length */
+    RtlCopyMemory(MessageData->Buffer, ResponseString.Buffer, i);
     *DataLength = i;
 
     if (!(KdbDebugState & KD_DEBUG_KDSERIAL))
@@ -653,10 +662,6 @@ KdReceivePacket(
 
     /* Release the spinlock */
     KdpReleaseLock(&KdpSerialSpinLock, OldIrql);
-
-    /* Print a new line */
-    *StringChar.Buffer = '\n';
-    KdpPrintString(&StringChar);
 
     return KdPacketReceived;
 }
