@@ -549,6 +549,14 @@ KdSendPacket(
 
         return;
     }
+    else if (PacketType == PACKET_TYPE_KD_STATE_CHANGE64)
+    {
+        PDBGKD_ANY_WAIT_STATE_CHANGE WaitStateChange = (PDBGKD_ANY_WAIT_STATE_CHANGE)MessageHeader->Buffer;
+        if (WaitStateChange->NewState == DbgKdLoadSymbolsStateChange)
+        {
+            return;
+        }
+    }
     UNIMPLEMENTED;
 }
 
@@ -568,6 +576,14 @@ KdReceivePacket(
     ULONG DummyScanCode;
     CHAR MessageBuffer[100];
     STRING ResponseString;
+
+    if (PacketType == PACKET_TYPE_KD_STATE_MANIPULATE)
+    {
+        PDBGKD_MANIPULATE_STATE64 ManipulateState = (PDBGKD_MANIPULATE_STATE64)MessageHeader->Buffer;
+        ManipulateState->ApiNumber = DbgKdContinueApi;
+        ManipulateState->u.Continue.ContinueStatus = STATUS_SUCCESS;
+        return KdPacketReceived;
+    }
 
     if (PacketType != PACKET_TYPE_KD_DEBUG_IO)
       return KdPacketTimedOut;
